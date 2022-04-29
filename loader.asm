@@ -7,8 +7,8 @@ PPUADDR = $2006
 PPUDATA = $2007
 
 ; copy CHR
-SRC  = $00
-SRCH = $01
+SRC  = $01
+SRCH = $02
 
 	.bank 0
 	.bank 1
@@ -43,9 +43,87 @@ _init_mmc:
 	sta $BFFF
 	sta $BFFF
 
+_joypad:
+	lda #1		; read pad
+	sta $4016
+	lda #0
+	sta $4016
+	sta <0		; clear work: PRG 32K bank
+	sta <1		; clear work: CHR 16K bank
+	sta <2		; clear work: CHR 8K top/bottom
+	sta <3		; clear work: V:2, H:3, 2nd SOROM:0
+	lda $4016	; 0:A skip
+	lda $4016	; 1:B skip
+_select:
+	lda $4016	; 2:Select
+	and #1
+	beq _start
+	lda #3		; H
+	sta <3
+_start:
+	lda $4016	; 3:Start
+	and #1
+	beq _up
+	lda #1
+	sta <0
+	sta <2
+	lda #2		; V
+	sta <3
+_up:
+	lda $4016	; 4:Up
+	and #1
+	beq _down
+	lda #2
+	sta <0
+	lsr A
+	sta <1
+	lsr A
+	sta <2
+	lda #3		; H
+	sta <3
+_down:
+	lda $4016	; 5:Down
+	and #1
+	beq _left
+	lda #3
+	sta <0
+	lsr A
+	sta <1
+	sta <2
+	lda #3		; H
+	sta <3
+_left:
+	lda $4016	; 6:Left
+	and #1
+	beq _right
+	lda #4
+	sta <0
+	lsr A
+	sta <1
+	lda #0
+	sta <2
+	lda #2		; V
+	sta <3
+_right:
+	lda $4016	; 7:Right
+	and #1
+	beq _is_2nd
+	lda #5
+	sta <0
+	lsr A
+	sta <1
+	lsr A
+	sta <2
+	lda #2		; V
+	sta <3
+_is_2nd:
+	lda <3		; V:2, H:3, 2nd:0
+	beq copy_2nd_loader_to_ram0
+
 _copy_chr_rom:
-	;lda #$0C	; src CHR ROM 0(01100b) @ PRG:16KBx2x6 + CHR:8KBx6
-	lda #$0D	; src CHR ROM 2(01101b) @ PRG:16KBx2x6 + CHR:8KBx6
+	lda #$0C	; src CHR ROM 0(01100b) @ PRG:16KBx2x6 + CHR:8KBx2x3
+	clc
+	adc <1		; CHR 16K bank
 	sta $FFF0
 	lsr A
 	sta $FFF0
@@ -56,9 +134,14 @@ _copy_chr_rom:
 	lsr A
 	sta $FFF0
 
-	lda #$00	; src = $8000
+	lda #$00	; src = $8000 or $A000
 	sta <SRC
-	lda #$80
+	lda <2		; CHR 8K top/bottom
+	beq _b
+	lda #$20
+_b:
+	clc
+	adc #$80
 	sta <SRCH
 
 	ldy #0
@@ -74,21 +157,25 @@ loop:
 	dex
 	bne loop
 
-_copy_2nd_loader_to_ram0:
-	ldx #0
+copy_2nd_loader_to_ram0:
+	ldx #4
 loop1:
 	lda loader2nd,x
 	sta <0,x
 	inx
 	bne loop1
-	jmp 0		; goto the 2nd loader
+	jmp 4		; goto the 2nd loader
 
 
-	.org $C200
+	.org $C300
 loader2nd:
+	nop
+	nop
+	nop
+	nop
 _prg_rom:
-	;lda #$02	; CHR 8KB(0b), PRG switch 32KB(00b), Mirroring V(10b)
-	lda #$03	; CHR 8KB(0b), PRG switch 32KB(00b), Mirroring H(11b)
+	lda <3		; CHR 8KB(0b), PRG switch 32KB(00b), Mirroring V(10b),H(11b)
+	beq _2nd_SOROM
 	sta $9FFF
 	lsr A
 	sta $9FFF
@@ -106,8 +193,8 @@ _prg_rom:
 	sta $BFFF
 	sta $BFFF
 
-	;lda #$00	; PRG ROM 0(00000b) @ PRG:16KBx2x6 + CHR:8KBx6
-	lda #$04	; PRG ROM 2(00100b) @ PRG:16KBx2x6 + CHR:8KBx6
+	lda <0		; PRG ROM n(0PPP0b) @ PRG:16KBx2x6 + CHR:8KBx6
+	asl A
 	sta $FFF0
 	lsr A
 	sta $FFF0
@@ -117,6 +204,18 @@ _prg_rom:
 	sta $FFF0
 	lsr A
 	sta $FFF0
+	clc
+	bcc _go
+
+_2nd_SOROM:
+	lda #$02	; PRG 2st(1b), W-RAM(00b), x(0b), CHR bank 0(0b)
+	sta $BFFF
+	sta $BFFF
+	sta $BFFF
+	sta $BFFF
+	lsr A
+	sta $BFFF
+
 _go
 	jmp [$FFFC]
 
