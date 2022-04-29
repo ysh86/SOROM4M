@@ -20,8 +20,11 @@ reset_handler:
 	ldx #$FF	; stack
 	txs
 	stx $9FFF	; reset the mapper
+	lda #$00
+	sta PPUCTRL	; stop PPU
+	sta PPUMASK	; turn off rendering
 
-_init_mmc_ppu:
+_init_mmc:
 	lda #$0F	; CHR 8KB(0b), PRG switch $8000/fix $C000(11b), Mirroring H(11b)
 	sta $9FFF
 	lsr A
@@ -39,7 +42,6 @@ _init_mmc_ppu:
 	sta $BFFF
 	sta $BFFF
 	sta $BFFF
-	sta PPUCTRL	; stop PPU
 
 _copy_chr_rom:
 	;lda #$0C	; src CHR ROM 0(01100b) @ PRG:16KBx2x6 + CHR:8KBx6
@@ -60,7 +62,6 @@ _copy_chr_rom:
 	sta <SRCH
 
 	ldy #0
-	sty PPUMASK	; turn off rendering
 	sty PPUADDR	; dst CHR RAM addr
 	sty PPUADDR
 	ldx #32		; number of 256-byte pages to copy (= 256*32 = 8KB)
